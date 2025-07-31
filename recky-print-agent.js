@@ -222,8 +222,9 @@ class WebSocketClient {
     authenticate() {
         const authMessage = {
             action: 'authenticateAgent',
-            data: {
-                token: CONFIG.agentKey
+            payload: {
+                token: CONFIG.agentKey,
+                agentName: "print-agent"
             }
         };
 
