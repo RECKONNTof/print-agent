@@ -28,4 +28,6 @@ module.exports = {    // URL del servidor WebSocket
 
     // Configuracion de impresion
     sumatraPath: "C:\\Users\\Usuario\\AppData\\Local\\SumatraPDF\\SumatraPDF.exe", // Ruta al ejecutable de SumatraPDF
+
+    defaultPrinter: "EPSON L395 Series",        // Impresora predeterminada
 };

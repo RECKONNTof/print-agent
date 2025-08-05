@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "main": "ws-client.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node recky-print-agent.js"
   },
   "keywords": [],
   "author": "",

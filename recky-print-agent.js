@@ -40,6 +40,7 @@ const CONFIG = {
     tempFileCleanupDelay: userConfig.tempFileCleanupDelay || 3000,
     httpPort: userConfig.httpPort || 7001,
     sumatraPath: userConfig.sumatraPath || '',
+    defaultPrinter: userConfig.defaultPrinter || null,
 };
 
 // Directorio temporal para archivos
@@ -132,8 +133,10 @@ async function processPrintJob(data) {
 
         logger.log(`Archivo guardado en: ${tempFilePath}`);
 
+        const printerName = (destino && destino.trim() !== '') ? destino : CONFIG.defaultPrinter;
+
         // Imprimir
-        printFile(tempFilePath, destino);        // Eliminar archivo temporal
+        printFile(tempFilePath, printerName);        // Eliminar archivo temporal
         setTimeout(() => {
             try {
                 fs.unlinkSync(tempFilePath);
