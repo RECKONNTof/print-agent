@@ -263,10 +263,10 @@ class WebSocketClient {
                 const result = await processPrintJob(data);
 
                 // Enviar resultado de vuelta al servidor
-                // this.send({
-                //     action: 'printJobResult',
-                //     data: result
-                // });
+                this.send({
+                    action: 'printJobResult',
+                    payload: result
+                });
 
                 break;
 
@@ -274,7 +274,7 @@ class WebSocketClient {
                 logger.log('Ping recibido del servidor, respondiendo');
                 this.send({
                     action: 'pong',
-                    data: { timestamp: Date.now() }
+                    payload: { timestamp: Date.now() }
                 }); break;
 
             default:
