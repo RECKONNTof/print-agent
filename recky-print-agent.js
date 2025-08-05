@@ -136,7 +136,7 @@ async function processPrintJob(data) {
         const printerName = (destino && destino.trim() !== '') ? destino : CONFIG.defaultPrinter;
 
         // Imprimir
-        printFile(tempFilePath, printerName);        // Eliminar archivo temporal
+        printFile(tempFilePath, printerName);
         setTimeout(() => {
             try {
                 fs.unlinkSync(tempFilePath);
@@ -185,8 +185,8 @@ class WebSocketClient {
 
             this.ws.on('message', async (data) => {
                 try {
-                    console.log(`------- Mensaje WebSocket Recibido -------`);
-                    console.log(`Datos: ${data.toString()}`);
+                    console.log(`------- Nuevo mensaje recibido -------`);
+                    // console.log(`Datos: ${data.toString()}`);
 
                     let message;
                     try {
@@ -227,7 +227,7 @@ class WebSocketClient {
             action: 'authenticateAgent',
             payload: {
                 token: CONFIG.agentKey,
-                agentName: "print-agent"
+                agentName: "silentPrint"
             }
         };
 
@@ -236,9 +236,9 @@ class WebSocketClient {
     }
 
     async handleMessage(message) {
-        console.log(`Manejando mensaje: ${JSON.stringify(message)}`);
+        console.log(`Manejando mensaje: ${JSON.stringify(message).action || 'sin acción'}`);
 
-        const { action, data } = message;
+        const { action, payload } = message;
 
         // Si no hay acción definida, no procesamos el mensaje
         if (!action) {
@@ -253,20 +253,20 @@ class WebSocketClient {
                 break;
 
             case 'silentPrint':
-                if (!data) {
+                if (!payload) {
                     logger.error('Trabajo de impresión recibido sin datos');
                     return;
                 }
-                logger.log(`Recibido trabajo de impresión para ${data.destino || 'impresora predeterminada'}`);
+                logger.log(`Recibido trabajo de impresión para ${payload.destino || 'impresora predeterminada'}`);
 
                 // Procesar trabajo e imprimir
-                const result = await processPrintJob(data);
+                const result = await processPrintJob(payload);
 
                 // Enviar resultado de vuelta al servidor
-                this.send({
-                    action: 'printJobResult',
-                    payload: result
-                });
+                // this.send({
+                //     action: 'printJobResult',
+                //     payload: result
+                // });
 
                 break;
 
@@ -279,7 +279,7 @@ class WebSocketClient {
 
             default:
                 logger.log(`Acción desconocida: "${action}"`);
-                logger.log(`Datos: ${JSON.stringify(data || {})}`);
+                logger.log(`Datos: ${JSON.stringify(payload || {})}`);
         }
     }
 
