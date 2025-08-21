@@ -6,13 +6,10 @@
  */
 
 module.exports = {    // URL del servidor WebSocket
-    serverUrl: "ws://localhost:9090/ws",
+    serverUrl: "wss://ws.reckonnt.net:9090/ws",
 
     // Clave de autenticacion del agente
-    agentKey: "",
-
-    // Configuracion del servidor HTTP local
-    httpPort: 7001,              // Puerto para el servidor HTTP local
+    agentKey: "LE4piAQl4MICHIedQUGvekkCyJAUPu3eT3jHELgvhil1n5HifuBfTZqjq3aFeMz4",
 
     // Configuracion de logs
     logFile: "./recky-print-agent.log",
@@ -20,7 +17,7 @@ module.exports = {    // URL del servidor WebSocket
 
     // Configuracion de conexion
     reconnectTimeout: 5000,      // Tiempo entre intentos de reconexion (ms)
-    reconnectMaxAttempts: 100,   // Número máximo de intentos de reconexion
+    reconnectMaxAttempts: 10,   // Número máximo de intentos de reconexion
 
     // Configuracion avanzada
     tempDir: null,              // Directorio temporal para archivos (null = usar el predeterminado del sistema)

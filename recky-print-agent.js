@@ -5,19 +5,15 @@
  * la impresión silenciosa de documentos desde el servidor.
  * 
  * Funcionalidades:
- * - Conexión WebSocket para comunicación con el servidor (no autenticada por defecto)
+ * - Conexión WebSocket autenticada automáticamente con el servidor
  * - Impresión silenciosa de documentos
- * - Endpoint HTTP en puerto 7001 para establecer el token de autenticación
- *   (URL: http://localhost:7001/set-token?token=NUEVO_TOKEN)
- *   Nota: El agente SOLO se autentica después de recibir una llamada a este endpoint
+ * - Autenticación automática usando el agentKey configurado en settings.js
  */
 
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const WebSocket = require('ws');
-const http = require('http');
-const url = require('url');
 const { execSync } = require('child_process');
 
 // Cargar configuración desde settings.js
@@ -38,7 +34,6 @@ const CONFIG = {
     reconnectTimeout: userConfig.reconnectTimeout || 5000,
     reconnectMaxAttempts: userConfig.reconnectMaxAttempts || 100,
     tempFileCleanupDelay: userConfig.tempFileCleanupDelay || 3000,
-    httpPort: userConfig.httpPort || 7001,
     sumatraPath: userConfig.sumatraPath || '',
     defaultPrinter: userConfig.defaultPrinter || null,
 };
@@ -135,6 +130,8 @@ async function processPrintJob(data) {
 
         const printerName = (destino && destino.trim() !== '') ? destino : CONFIG.defaultPrinter;
 
+        console.log(`Usando impresora: ${printerName}`);
+
         // Imprimir
         printFile(tempFilePath, printerName);
         setTimeout(() => {
@@ -180,13 +177,16 @@ class WebSocketClient {
                 logger.log(`Conexión establecida (ID: ${Date.now()})`);
                 this.isConnected = true;
                 this.reconnectAttempts = 0;
-                logger.log('Conexión WebSocket establecida, esperando token para autenticación');
+                logger.log('Conexión WebSocket establecida, iniciando autenticación automática');
+
+                // Autenticar automáticamente al conectar
+                this.authenticate();
             });
 
             this.ws.on('message', async (data) => {
                 try {
                     console.log(`------- Nuevo mensaje recibido -------`);
-                    // console.log(`Datos: ${data.toString()}`);
+                    console.log(`Datos: ${data.toString()}`);
 
                     let message;
                     try {
@@ -208,11 +208,15 @@ class WebSocketClient {
                     logger.error(`Error general al procesar mensaje: ${error.message}`);
                     logger.error(`Stack: ${error.stack}`);
                 }
-            }); this.ws.on('close', (code, reason) => {
+            });
+
+            this.ws.on('close', (code, reason) => {
                 logger.log(`Conexión cerrada con código: ${code}, razón: ${reason || 'No especificada'}`);
                 this.isConnected = false;
                 this.attemptReconnect();
-            }); this.ws.on('error', (error) => {
+            });
+
+            this.ws.on('error', (error) => {
                 logger.error(`Error de WebSocket: ${error.message}`);
             });
 
@@ -236,50 +240,59 @@ class WebSocketClient {
     }
 
     async handleMessage(message) {
-        console.log(`Manejando mensaje: ${JSON.stringify(message).action || 'sin acción'}`);
+        try {
+            const { action, payload } = message;
 
-        const { action, payload } = message;
+            console.log(`Manejando mensaje: ${action || 'sin acción'}`);
+            console.log(`Payload recibido:`, payload);
 
-        // Si no hay acción definida, no procesamos el mensaje
-        if (!action) {
-            logger.error('Mensaje recibido sin acción definida, ignorando');
-            logger.error(`Contenido del mensaje: ${JSON.stringify(message)}`);
-            return;
-        }
+            // Si no hay acción definida, no procesamos el mensaje
+            if (!action) {
+                logger.error('Mensaje recibido sin acción definida, ignorando');
+                logger.error(`Contenido del mensaje: ${JSON.stringify(message)}`);
+                return;
+            }
 
-        switch (action) {
-            case 'authenticated':
-                logger.log('El agente está activo y esperando trabajos de impresión');
-                break;
+            switch (action) {
+                case 'authenticated':
+                    logger.log('El agente está activo y esperando trabajos de impresión');
+                    break;
 
-            case 'silentPrint':
-                if (!payload) {
-                    logger.error('Trabajo de impresión recibido sin datos');
-                    return;
-                }
-                logger.log(`Recibido trabajo de impresión para ${payload.destino || 'impresora predeterminada'}`);
+                case 'silentPrint':
+                    if (!payload) {
+                        logger.error('Trabajo de impresión recibido sin datos');
+                        return;
+                    }
+                    logger.log(`Recibido trabajo de impresión para ${payload.destino || 'impresora predeterminada'}`);
 
-                // Procesar trabajo e imprimir
-                const result = await processPrintJob(payload);
+                    // Procesar trabajo e imprimir
+                    const result = await processPrintJob(payload);
 
-                // Enviar resultado de vuelta al servidor
-                // this.send({
-                //     action: 'printJobResult',
-                //     payload: result
-                // });
+                    // Enviar resultado de vuelta al servidor
+                    // this.send({
+                    //     action: 'printJobResult',
+                    //     payload: result
+                    // });
 
-                break;
+                    break;
 
-            case 'ping':
-                logger.log('Ping recibido del servidor, respondiendo');
-                this.send({
-                    action: 'pong',
-                    payload: { timestamp: Date.now() }
-                }); break;
+                case 'ping':
+                    logger.log('Ping recibido del servidor, respondiendo');
+                    setTimeout(() => {
+                        this.send({
+                            action: 'pong',
+                            payload: { timestamp: Date.now() }
+                        });
+                    }, 10);
+                    break;
 
-            default:
-                logger.log(`Acción desconocida: "${action}"`);
-                logger.log(`Datos: ${JSON.stringify(payload || {})}`);
+                default:
+                    logger.log(`Acción desconocida: "${action}"`);
+                    logger.log(`Datos: ${JSON.stringify(payload || {})}`);
+            }
+        } catch (error) {
+            logger.error(`Error en handleMessage: ${error.message}`);
+            logger.error(`Stack trace: ${error.stack}`);
         }
     }
 
@@ -307,76 +320,16 @@ class WebSocketClient {
     }
 }
 
-// Inicializar el endpoint HTTP para configurar el token
-function initApi() {
-    const PORT = 7001;
-
-    const server = http.createServer((req, res) => {
-        const parsedUrl = url.parse(req.url, true);
-        const pathname = parsedUrl.pathname;
-
-        // Verificar si la ruta es /set-token
-        if (pathname === '/set-token') {
-            // Obtener el token de los parámetros de la URL
-            const token = parsedUrl.query.token;
-
-            if (!token) {
-                res.writeHead(400, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({
-                    success: false,
-                    message: 'No se proporcionó el parámetro token'
-                }));
-                return;
-            }            // Actualizar el token en la configuración
-            CONFIG.agentKey = token;
-            logger.log(`Token actualizado a: ${token}`);
-
-            // Autenticar con el nuevo token si hay una conexión WebSocket activa
-            if (global.wsClient && global.wsClient.isConnected) {
-                logger.log('Iniciando autenticación con el nuevo token');
-                global.wsClient.authenticate();
-            } else {
-                logger.error('No hay conexión WebSocket activa para autenticar');
-            }
-
-            res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({
-                success: true,
-                message: 'Token actualizado exitosamente'
-            }));
-        } else {
-            // Ruta no encontrada
-            res.writeHead(404, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({
-                success: false,
-                message: 'Ruta no encontrada'
-            }));
-        }
-    });
-
-    server.listen(PORT, () => {
-        logger.log(`Endpoint set-token escuchando en el puerto ${PORT}`);
-    });
-
-    server.on('error', (err) => {
-        logger.error(`Error en el servidor HTTP del endpoint set-token: ${err.message}`);
-    });
-}
-
 // Función principal
 function main() {
     logger.log('=== Recky Print Agent iniciado ===');
     logger.log(`Sistema: ${os.platform()} ${os.release()}`);
     logger.log(`Directorio temporal: ${TMP_DIR}`);
     logger.log(`Servidor WebSocket: ${CONFIG.serverUrl}`);
-    logger.log('IMPORTANTE: El agente no se autenticará automáticamente');
-    logger.log('Para autenticar, use: http://localhost:7001/set-token?token=TU_TOKEN');
-
-    // Iniciar el endpoint HTTP para set-token
-    initApi();
+    logger.log(`Clave de agente: ${CONFIG.agentKey}`);
+    logger.log('El agente se autenticará automáticamente al conectar');
 
     const client = new WebSocketClient();
-    global.wsClient = client; // Hacer accesible globalmente el cliente WebSocket
     client.connect();
 
     // Manejar señales de cierre
