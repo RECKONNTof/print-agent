@@ -166,6 +166,7 @@ class WebSocketClient {
         this.ws = null;
         this.isConnected = false;
         this.reconnectAttempts = 0;
+        this.pingInterval = null;
     }
 
     connect() {
@@ -181,6 +182,9 @@ class WebSocketClient {
 
                 // Autenticar automáticamente al conectar
                 this.authenticate();
+
+                // Iniciar el mecanismo de ping para mantener la conexión viva
+                this.startPing();
             });
 
             this.ws.on('message', async (data) => {
@@ -213,6 +217,7 @@ class WebSocketClient {
             this.ws.on('close', (code, reason) => {
                 logger.log(`Conexión cerrada con código: ${code}, razón: ${reason || 'No especificada'}`);
                 this.isConnected = false;
+                this.stopPing();
                 this.attemptReconnect();
             });
 
@@ -237,6 +242,34 @@ class WebSocketClient {
 
         this.send(authMessage);
         logger.log(`Autenticación enviada con clave: ${CONFIG.agentKey}`);
+    }
+
+    startPing() {
+        // Limpiar cualquier interval previo
+        this.stopPing();
+
+        logger.log('Iniciando sistema de ping para mantener conexión viva (cada 60 segundos)');
+
+        this.pingInterval = setInterval(() => {
+            if (this.isConnected && this.ws) {
+                logger.log('Enviando ping al servidor para mantener conexión viva');
+                this.send({
+                    action: 'ping',
+                    payload: {
+                        timestamp: Date.now(),
+                        agentName: "silentPrint"
+                    }
+                });
+            }
+        }, 60000); // 60 segundos = 1 minuto
+    }
+
+    stopPing() {
+        if (this.pingInterval) {
+            logger.log('Deteniendo sistema de ping');
+            clearInterval(this.pingInterval);
+            this.pingInterval = null;
+        }
     }
 
     async handleMessage(message) {
@@ -276,14 +309,8 @@ class WebSocketClient {
 
                     break;
 
-                case 'ping':
-                    logger.log('Ping recibido del servidor, respondiendo');
-                    setTimeout(() => {
-                        this.send({
-                            action: 'pong',
-                            payload: { timestamp: Date.now() }
-                        });
-                    }, 10);
+                case 'pong':
+                    logger.log('Pong recibido del servidor - conexión confirmada como activa');
                     break;
 
                 default:
@@ -335,11 +362,13 @@ function main() {
     // Manejar señales de cierre
     process.on('SIGINT', () => {
         logger.log('Proceso interrumpido, cerrando...');
+        client.stopPing();
         process.exit(0);
     });
 
     process.on('SIGTERM', () => {
         logger.log('Proceso terminado, cerrando...');
+        client.stopPing();
         process.exit(0);
     });
 }
