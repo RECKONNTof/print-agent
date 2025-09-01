@@ -327,7 +327,7 @@ class WebSocketClient {
                     action: 'ping',
                     payload: {
                         timestamp: Date.now(),
-                        agentName: "silentPrint"
+                        connectionName: "silentPrint"
                     }
                 });
             }
@@ -349,14 +349,14 @@ class WebSocketClient {
         this.waitingForPong = false;
     }
 
-    // forceCloseConnection() {
-    //     logger.log('Forzando cierre de conexión debido a timeout de ping');
-    //     this.stopPing();
-    //     if (this.ws) {
-    //         this.ws.close(1000, 'Ping timeout');
-    //     }
-    //     this.isConnected = false;
-    // }
+    forceCloseConnection() {
+        logger.log('Forzando cierre de conexión debido a timeout de ping');
+        this.stopPing();
+        if (this.ws) {
+            this.ws.close(1000, 'Ping timeout');
+        }
+        this.isConnected = false;
+    }
 
     async handleMessage(message) {
         try {
