@@ -27,4 +27,9 @@ module.exports = {    // URL del servidor WebSocket
     sumatraPath: "C:\\Users\\Usuario\\AppData\\Local\\SumatraPDF\\SumatraPDF.exe", // Ruta al ejecutable de SumatraPDF
 
     defaultPrinter: "EPSON L395 Series",        // Impresora predeterminada
+
+    // Configuracion de comandos de corte ESC/POS
+    enableAutoCut: false,            // Habilitar corte automático después de imprimir
+    usePartialCut: false,           // false = corte completo, true = corte parcial
+    cutDelay: 2000,                 // Tiempo de espera antes del corte (ms)
 };

@@ -16,6 +16,16 @@ const os = require('os');
 const WebSocket = require('ws');
 const { execSync } = require('child_process');
 
+// Importar módulo de comandos de corte ESC/POS (con manejo de errores)
+let sendCutAfterPrint = null;
+try {
+    const cutModule = require('./cut-commands.js');
+    sendCutAfterPrint = cutModule.sendCutAfterPrint;
+} catch (error) {
+    console.warn(`Advertencia: No se pudo cargar el módulo de comandos de corte: ${error.message}`);
+    console.warn('El corte automático no estará disponible');
+}
+
 // Cargar configuración desde settings.js
 let userConfig = {};
 try {
@@ -36,6 +46,9 @@ const CONFIG = {
     tempFileCleanupDelay: userConfig.tempFileCleanupDelay || 3000,
     sumatraPath: userConfig.sumatraPath || '',
     defaultPrinter: userConfig.defaultPrinter || null,
+    enableAutoCut: userConfig.enableAutoCut !== undefined ? userConfig.enableAutoCut : false,
+    usePartialCut: userConfig.usePartialCut !== undefined ? userConfig.usePartialCut : false,
+    cutDelay: userConfig.cutDelay || 2000
 };
 
 // Directorio temporal para archivos
@@ -134,6 +147,44 @@ async function processPrintJob(data) {
 
         // Imprimir
         printFile(tempFilePath, printerName);
+
+        // NUEVO: Enviar comando de corte automático después de la impresión
+        if (CONFIG.enableAutoCut && printerName && sendCutAfterPrint) {
+            logger.log('Iniciando proceso de corte automático...');
+
+            try {
+                // Esperar un poco para que termine la impresión antes del corte
+                const cutDelay = CONFIG.cutDelay || 2000;
+                logger.log(`Esperando ${cutDelay}ms antes del corte...`);
+
+                setTimeout(async () => {
+                    try {
+                        const usePartialCut = CONFIG.usePartialCut || false;
+                        const cutType = usePartialCut ? 'parcial' : 'completo';
+
+                        logger.log(`Enviando comando de corte ${cutType} a impresora: ${printerName}`);
+
+                        const cutResult = await sendCutAfterPrint(printerName, usePartialCut);
+
+                        if (cutResult.success) {
+                            logger.log(`Comando de corte ${cutType} enviado exitosamente`);
+                        } else {
+                            logger.error(`Error en comando de corte: ${cutResult.error}`);
+                        }
+                    } catch (cutError) {
+                        logger.error(`Error al enviar comando de corte: ${cutError.message}`);
+                    }
+                }, cutDelay);
+
+            } catch (error) {
+                logger.error(`Error en configuración de corte automático: ${error.message}`);
+            }
+        } else if (CONFIG.enableAutoCut && !printerName) {
+            logger.log('Corte automático habilitado pero no se especificó impresora');
+        } else if (CONFIG.enableAutoCut && !sendCutAfterPrint) {
+            logger.error('Corte automático habilitado pero módulo de comandos no disponible');
+        }
+
         setTimeout(() => {
             try {
                 fs.unlinkSync(tempFilePath);
@@ -167,6 +218,8 @@ class WebSocketClient {
         this.isConnected = false;
         this.reconnectAttempts = 0;
         this.pingInterval = null;
+        this.pingTimeout = null;
+        this.waitingForPong = false;
     }
 
     connect() {
@@ -252,7 +305,24 @@ class WebSocketClient {
 
         this.pingInterval = setInterval(() => {
             if (this.isConnected && this.ws) {
+                // Si ya estamos esperando un pong, no enviar otro ping
+                if (this.waitingForPong) {
+                    logger.error('Timeout: No se recibió pong del ping anterior, cerrando conexión');
+                    this.forceCloseConnection();
+                    return;
+                }
+
                 logger.log('Enviando ping al servidor para mantener conexión viva');
+                this.waitingForPong = true;
+
+                // Configurar timeout de 15 segundos para esperar el pong
+                this.pingTimeout = setTimeout(() => {
+                    if (this.waitingForPong) {
+                        logger.error('Timeout de 15 segundos: No se recibió respuesta pong del servidor, cerrando conexión');
+                        this.forceCloseConnection();
+                    }
+                }, 15000); // 15 segundos
+
                 this.send({
                     action: 'ping',
                     payload: {
@@ -270,7 +340,23 @@ class WebSocketClient {
             clearInterval(this.pingInterval);
             this.pingInterval = null;
         }
+
+        if (this.pingTimeout) {
+            clearTimeout(this.pingTimeout);
+            this.pingTimeout = null;
+        }
+
+        this.waitingForPong = false;
     }
+
+    // forceCloseConnection() {
+    //     logger.log('Forzando cierre de conexión debido a timeout de ping');
+    //     this.stopPing();
+    //     if (this.ws) {
+    //         this.ws.close(1000, 'Ping timeout');
+    //     }
+    //     this.isConnected = false;
+    // }
 
     async handleMessage(message) {
         try {
@@ -311,6 +397,12 @@ class WebSocketClient {
 
                 case 'pong':
                     logger.log('Pong recibido del servidor - conexión confirmada como activa');
+                    // Limpiar el timeout del ping y resetear el flag
+                    if (this.pingTimeout) {
+                        clearTimeout(this.pingTimeout);
+                        this.pingTimeout = null;
+                    }
+                    this.waitingForPong = false;
                     break;
 
                 default:
@@ -354,6 +446,36 @@ function main() {
     logger.log(`Directorio temporal: ${TMP_DIR}`);
     logger.log(`Servidor WebSocket: ${CONFIG.serverUrl}`);
     logger.log(`Clave de agente: ${CONFIG.agentKey}`);
+    logger.log(`Impresora predeterminada: ${CONFIG.defaultPrinter || 'No configurada'}`);
+
+    // Información sobre configuración de corte automático
+    if (CONFIG.enableAutoCut) {
+        const cutType = CONFIG.usePartialCut ? 'parcial' : 'completo';
+        logger.log(`Corte automático HABILITADO - Tipo: ${cutType}, Retraso: ${CONFIG.cutDelay || 2000}ms`);
+
+        if (!sendCutAfterPrint) {
+            logger.error('ADVERTENCIA: Módulo de comandos de corte no disponible');
+            logger.error('Verifique que existe el archivo cut-commands.js');
+        } else {
+            // Verificar que existen los archivos de comandos de corte
+            try {
+                const cutBinPath = path.join(__dirname, 'cut.bin');
+                const cutPartialBinPath = path.join(__dirname, 'cut-partial.bin');
+
+                if (fs.existsSync(cutBinPath) || fs.existsSync(cutPartialBinPath)) {
+                    logger.log('Archivos de comandos de corte encontrados');
+                } else {
+                    logger.error('ADVERTENCIA: Archivos de comandos de corte no encontrados');
+                    logger.error('Ejecute: node generate-cut-bin.js');
+                }
+            } catch (error) {
+                logger.error(`Error al verificar archivos de corte: ${error.message}`);
+            }
+        }
+    } else {
+        logger.log('Corte automático DESHABILITADO');
+    }
+
     logger.log('El agente se autenticará automáticamente al conectar');
 
     const client = new WebSocketClient();
