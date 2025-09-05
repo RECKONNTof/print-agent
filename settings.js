@@ -28,8 +28,23 @@ module.exports = {    // URL del servidor WebSocket
 
     defaultPrinter: "EPSON L395 Series",        // Impresora predeterminada
 
-    // Configuracion de comandos de corte ESC/POS
-    enableAutoCut: false,            // Habilitar corte automático después de imprimir
-    usePartialCut: false,           // false = corte completo, true = corte parcial
-    cutDelay: 2000,                 // Tiempo de espera antes del corte (ms)
+    // Configuracion de corte de papel
+    cut: {
+        enabled: true,            // activar/desactivar corte global
+        defaultMode: "partial",   // "partial" = ESC m, "full" = ESC i
+        delayMs: 1200,            // espera tras imprimir antes de cortar (ms)
+        perPrinter: {
+            // Ejemplo: cortar solo en la impresora térmica "CAJA"
+            "CAJA": {
+                enabled: true,
+                mode: "partial",  // o "full"
+                delayMs: 1000
+            },
+
+            // Ejemplo: desactivar corte para la Epson
+            "EPSON L395 Series": {
+                enabled: false
+            }
+        }
+    }
 };

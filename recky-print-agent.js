@@ -14,17 +14,9 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const WebSocket = require('ws');
-const { execSync } = require('child_process');
+const { execSync, spawn } = require('child_process');
 
-// Importar módulo de comandos de corte ESC/POS (con manejo de errores)
-let sendCutAfterPrint = null;
-try {
-    const cutModule = require('./cut-commands.js');
-    sendCutAfterPrint = cutModule.sendCutAfterPrint;
-} catch (error) {
-    console.warn(`Advertencia: No se pudo cargar el módulo de comandos de corte: ${error.message}`);
-    console.warn('El corte automático no estará disponible');
-}
+// (Funcionalidad de corte eliminada)
 
 // Cargar configuración desde settings.js
 let userConfig = {};
@@ -46,13 +38,19 @@ const CONFIG = {
     tempFileCleanupDelay: userConfig.tempFileCleanupDelay || 3000,
     sumatraPath: userConfig.sumatraPath || '',
     defaultPrinter: userConfig.defaultPrinter || null,
-    enableAutoCut: userConfig.enableAutoCut !== undefined ? userConfig.enableAutoCut : false,
-    usePartialCut: userConfig.usePartialCut !== undefined ? userConfig.usePartialCut : false,
-    cutDelay: userConfig.cutDelay || 2000
+    cut: {
+        enabled: userConfig?.cut?.enabled ?? false,
+        defaultMode: userConfig?.cut?.defaultMode || 'partial',
+        delayMs: userConfig?.cut?.delayMs ?? 1200,
+        perPrinter: userConfig?.cut?.perPrinter || {}
+    }
 };
 
 // Directorio temporal para archivos
 const TMP_DIR = userConfig.tempDir || path.join(os.tmpdir(), 'recky-print');
+
+// Ruta del script de corte
+const CUT_PS1 = path.join(__dirname, 'send-cut.ps1');
 
 // Asegurar que existe el directorio temporal
 if (!fs.existsSync(TMP_DIR)) {
@@ -88,6 +86,44 @@ const logger = {
     }
 };
 
+// Config efectiva por impresora
+function getCutConfigFor(printerName) {
+    const base = CONFIG.cut || {};
+    const per = (base.perPrinter || {})[printerName] || {};
+    return {
+        enabled: per.enabled ?? base.enabled ?? false,
+        mode: per.mode ?? base.defaultMode ?? 'partial',
+        delayMs: per.delayMs ?? base.delayMs ?? 1000
+    };
+}
+
+// Ejecuta corte invocando PowerShell (RAW al spooler Windows)
+function sendCut(printerName, { mode = 'partial', text = '', feed = 0 } = {}) {
+    return new Promise((resolve, reject) => {
+        if (os.platform() !== 'win32') return resolve(false); // no-op en macOS/Linux
+
+        const args = [
+            '-NoProfile',
+            '-ExecutionPolicy', 'Bypass',
+            '-File', CUT_PS1,
+            '-PrinterName', printerName,
+            '-CutMode', mode
+        ];
+        if (text) args.push('-Text', text);
+        if (feed) args.push('-Feed', String(feed));
+
+        const ps = spawn('powershell.exe', args, { windowsHide: true });
+        let stderr = '';
+
+        ps.stdout.on('data', d => logger.log(`CUT OUT: ${d.toString().trim()}`));
+        ps.stderr.on('data', d => { stderr += d.toString(); });
+        ps.on('close', code => {
+            if (code === 0) return resolve(true);
+            logger.error(`Corte falló (code=${code}): ${stderr.trim()}`);
+            reject(new Error(stderr.trim() || `cut exited ${code}`));
+        });
+    });
+}
 // Imprimir un archivo según el sistema operativo
 function printFile(filePath, printerName) {
     try {
@@ -148,42 +184,23 @@ async function processPrintJob(data) {
         // Imprimir
         printFile(tempFilePath, printerName);
 
-        // NUEVO: Enviar comando de corte automático después de la impresión
-        if (CONFIG.enableAutoCut && printerName && sendCutAfterPrint) {
-            logger.log('Iniciando proceso de corte automático...');
-
-            try {
-                // Esperar un poco para que termine la impresión antes del corte
-                const cutDelay = CONFIG.cutDelay || 2000;
-                logger.log(`Esperando ${cutDelay}ms antes del corte...`);
-
-                setTimeout(async () => {
-                    try {
-                        const usePartialCut = CONFIG.usePartialCut || false;
-                        const cutType = usePartialCut ? 'parcial' : 'completo';
-
-                        logger.log(`Enviando comando de corte ${cutType} a impresora: ${printerName}`);
-
-                        const cutResult = await sendCutAfterPrint(printerName, usePartialCut);
-
-                        if (cutResult.success) {
-                            logger.log(`Comando de corte ${cutType} enviado exitosamente`);
-                        } else {
-                            logger.error(`Error en comando de corte: ${cutResult.error}`);
-                        }
-                    } catch (cutError) {
-                        logger.error(`Error al enviar comando de corte: ${cutError.message}`);
-                    }
-                }, cutDelay);
-
-            } catch (error) {
-                logger.error(`Error en configuración de corte automático: ${error.message}`);
+        // Lógica de corte
+        // === Corte basado SOLO en configuración (sin instrucciones del servidor) ===
+        try {
+            const { enabled, mode, delayMs } = getCutConfigFor(printerName || CONFIG.defaultPrinter || '');
+            if (enabled && printerName) {
+                logger.log(`Agendando corte (${mode}) en ${delayMs}ms para impresora ${printerName}`);
+                await new Promise(r => setTimeout(r, delayMs));
+                await sendCut(printerName, { mode, feed: 0 }); // puedes ajustar "feed" si deseas líneas extra
+                logger.log(`Corte enviado a ${printerName}`);
+            } else {
+                logger.log(`Corte omitido: enabled=${enabled}, printer=${printerName || 'N/A'}`);
             }
-        } else if (CONFIG.enableAutoCut && !printerName) {
-            logger.log('Corte automático habilitado pero no se especificó impresora');
-        } else if (CONFIG.enableAutoCut && !sendCutAfterPrint) {
-            logger.error('Corte automático habilitado pero módulo de comandos no disponible');
+        } catch (cutErr) {
+            logger.error(`Error durante corte: ${cutErr.message}`);
         }
+
+
 
         setTimeout(() => {
             try {
@@ -448,33 +465,7 @@ function main() {
     logger.log(`Clave de agente: ${CONFIG.agentKey}`);
     logger.log(`Impresora predeterminada: ${CONFIG.defaultPrinter || 'No configurada'}`);
 
-    // Información sobre configuración de corte automático
-    if (CONFIG.enableAutoCut) {
-        const cutType = CONFIG.usePartialCut ? 'parcial' : 'completo';
-        logger.log(`Corte automático HABILITADO - Tipo: ${cutType}, Retraso: ${CONFIG.cutDelay || 2000}ms`);
-
-        if (!sendCutAfterPrint) {
-            logger.error('ADVERTENCIA: Módulo de comandos de corte no disponible');
-            logger.error('Verifique que existe el archivo cut-commands.js');
-        } else {
-            // Verificar que existen los archivos de comandos de corte
-            try {
-                const cutBinPath = path.join(__dirname, 'cut.bin');
-                const cutPartialBinPath = path.join(__dirname, 'cut-partial.bin');
-
-                if (fs.existsSync(cutBinPath) || fs.existsSync(cutPartialBinPath)) {
-                    logger.log('Archivos de comandos de corte encontrados');
-                } else {
-                    logger.error('ADVERTENCIA: Archivos de comandos de corte no encontrados');
-                    logger.error('Ejecute: node generate-cut-bin.js');
-                }
-            } catch (error) {
-                logger.error(`Error al verificar archivos de corte: ${error.message}`);
-            }
-        }
-    } else {
-        logger.log('Corte automático DESHABILITADO');
-    }
+    // (Información de corte eliminada)
 
     logger.log('El agente se autenticará automáticamente al conectar');
 

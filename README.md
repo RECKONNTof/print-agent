@@ -10,6 +10,8 @@ Este es un agente de impresión ligero diseñado para trabajar con el sistema Re
 - Reconexión automática al servidor
 - Registro básico de actividades
 
+Nota: Se ha eliminado toda la funcionalidad relacionada con comandos de corte ESC/POS para simplificar el agente exclusivamente a impresión y conexión WebSocket.
+
 ## Requisitos
 
 - Node.js 14.0 o superior
