@@ -1,0 +1,17 @@
+2025-10-22T18:26:00.856Z - === Recky Print Agent iniciado ===
+2025-10-22T18:26:00.858Z - Sistema: win32 10.0.19045
+2025-10-22T18:26:00.858Z - Directorio temporal: C:\Users\BACKOF~1\AppData\Local\Temp\recky-print
+2025-10-22T18:26:00.859Z - Servidor WebSocket: wss://ws.reckonnt.net:9090/ws
+2025-10-22T18:26:00.859Z - Clave de agente: izC3Wc4rb2u84mfiDtpLxN3NOJSMivTVOSikdpVTLGPQm1FuJtfpVeKvil4hVd3w
+2025-10-22T18:26:00.859Z - Impresora predeterminada: CAJA
+2025-10-22T18:26:00.859Z - El agente se autenticará automáticamente al conectar
+2025-10-22T18:26:00.860Z - Conectando a wss://ws.reckonnt.net:9090/ws
+2025-10-22T18:26:01.143Z - Conexión establecida (ID: 1761157561143)
+2025-10-22T18:26:01.143Z - Conexión WebSocket establecida, iniciando autenticación automática
+2025-10-22T18:26:01.221Z - Accion recibida:
+2025-10-22T18:26:01.222Z - El agente está activo y esperando trabajos de impresión
+2025-10-22T18:27:01.228Z - Accion recibida:
+2025-10-22T18:27:01.229Z - Pong recibido del servidor - conexión confirmada como activa
+2025-10-22T18:28:01.235Z - Accion recibida:
+2025-10-22T18:28:01.236Z - Pong recibido del servidor - conexión confirmada como activa
+^C

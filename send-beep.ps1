@@ -1,9 +1,8 @@
 param(
   [string]$PrinterName = "CAJA",
-  [int]$Feed = 2,
-  [ValidateSet('partial','full','gs0')]
-  [string]$Mode = 'partial',      # partial=ESC m, full=ESC i, gs0=GS V 0
-  [string]$Text = "CUT TEST"      # imprime algo visible para que el driver no descarte
+  [int]$Count = 4,              # número de pitidos (beeps)
+  [int]$Duration = 6,           # duración de cada beep (~0.6 segundos)
+  [string]$Text = ""            # texto opcional para debug
 )
 
 Add-Type -TypeDefinition @"
@@ -40,7 +39,7 @@ public static class RawPrinter
         IntPtr h;
         if (!OpenPrinter(printer, out h, IntPtr.Zero)) return false;
         try {
-            var di = new DOCINFO(){ pDocName = "ESC_POS_CUT", pDatatype = "RAW" };
+            var di = new DOCINFO(){ pDocName = "ESC_POS_BEEP", pDatatype = "RAW" };
             if (!StartDocPrinter(h, 1, di)) return false;
             try {
                 if (!StartPagePrinter(h)) return false;
@@ -53,23 +52,27 @@ public static class RawPrinter
 }
 "@
 
-# --- Secuencias ---
-[byte[]]$init  = 0x1B,0x40                                   # ESC @
-[byte[]]$cut   = if ($Mode -eq 'full') { 0x1B,0x69 } elseif ($Mode -eq 'gs0') { 0x1D,0x56,0x00 } else { 0x1B,0x6D }
-[byte[]]$reset = 0x1B,0x40
+# --- Secuencias ESC/POS para BEEP ---
+[byte[]]$init = 0x1B,0x40  # ESC @ - Inicializar impresora
 
-# Texto visible (opcional) + LF
+# Comando BEEP: ESC B n l
+# ESC = 0x1B, B = 0x42, n = número de beeps, l = duración
+[byte[]]$beep = 0x1B,0x42,[byte]$Count,[byte]$Duration
+
+[byte[]]$reset = 0x1B,0x40  # ESC @ - Reset
+
+# Texto opcional para debug
 [byte[]]$txt = @()
-if ($Text) { $txt = [Text.Encoding]::Latin1.GetBytes($Text) + [byte[]](0x0A) }
-
-# Feed N líneas (LF)
-[byte[]]$feedBytes = @()
-if ($Feed -gt 0) {
-  $feedBytes = [byte[]](@(for($i=0;$i -lt $Feed;$i++){ [byte]0x0A }))
+if ($Text) { 
+    $txt = [Text.Encoding]::Latin1.GetBytes($Text) + [byte[]](0x0A) 
 }
 
-# Payload final
-[byte[]]$payload = $init + $txt + $feedBytes + $cut + $reset
+# Payload final: init + texto (opcional) + beep + reset
+[byte[]]$payload = $init + $txt + $beep + $reset
 
 $sent = [RawPrinter]::SendBytes($PrinterName, $payload)
-if ($sent) { "OK (bytes=" + $payload.Length + ")" } else { throw "WritePrinter failed" }
+if ($sent) { 
+    "OK (bytes=" + $payload.Length + ", count=$Count, duration=$Duration)" 
+} else { 
+    throw "WritePrinter failed" 
+}

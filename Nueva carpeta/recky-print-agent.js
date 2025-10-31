@@ -22,8 +22,9 @@ const { execSync, spawn } = require('child_process');
 let userConfig = {};
 try {
     userConfig = require('./settings.js');
+    console.log('Configuración cargada desde settings.js');
 } catch (error) {
-    console.warn(`No se pudo cargar el archivo settings: ${error.message}`);
+    console.warn(`No se pudo cargar el archivo settings.js: ${error.message}`);
     console.warn('Se utilizará la configuración predeterminada');
 }
 
@@ -40,25 +41,17 @@ const CONFIG = {
     cut: {
         enabled: userConfig?.cut?.enabled ?? false,
         defaultMode: userConfig?.cut?.defaultMode || 'partial',
-        delayMs: userConfig?.cut?.delayMs ?? 3000,
+        delayMs: userConfig?.cut?.delayMs ?? 1200,
         feedLines: userConfig?.cut?.feedLines ?? 3,
         perPrinter: userConfig?.cut?.perPrinter || {}
-    },
-    beep: {
-        enabled: userConfig?.beep?.enabled ?? false,
-        count: userConfig?.beep?.count ?? 4,
-        duration: userConfig?.beep?.duration ?? 6,
-        delayMs: userConfig?.beep?.delayMs ?? 500,
-        perPrinter: userConfig?.beep?.perPrinter || {}
     }
 };
 
 // Directorio temporal para archivos
 const TMP_DIR = userConfig.tempDir || path.join(os.tmpdir(), 'recky-print');
 
-// Ruta de los scripts PowerShell
+// Ruta del script de corte
 const CUT_PS1 = path.join(__dirname, 'send-cut.ps1');
-const BEEP_PS1 = path.join(__dirname, 'send-beep.ps1');
 
 // Asegurar que existe el directorio temporal
 if (!fs.existsSync(TMP_DIR)) {
@@ -94,47 +87,35 @@ const logger = {
     }
 };
 
-// Config efectiva por impresora - CORTE
+// Config efectiva por impresora
 function getCutConfigFor(printerName) {
     const base = CONFIG.cut || {};
     const per = (base.perPrinter || {})[printerName] || {};
     return {
         enabled: per.enabled ?? base.enabled ?? false,
         mode: per.mode ?? base.defaultMode ?? 'partial',
-        delayMs: per.delayMs ?? base.delayMs ?? 1000,
-        feedLines: per.feedLines ?? base.feedLines ?? 3
-    };
-}
-
-// Config efectiva por impresora - BEEP
-function getBeepConfigFor(printerName) {
-    const base = CONFIG.beep || {};
-    const per = (base.perPrinter || {})[printerName] || {};
-    return {
-        enabled: per.enabled ?? base.enabled ?? false,
-        count: per.count ?? base.count ?? 4,
-        duration: per.duration ?? base.duration ?? 6,
-        delayMs: per.delayMs ?? base.delayMs ?? 500
+        delayMs: per.delayMs ?? base.delayMs ?? 1000
     };
 }
 
 // Ejecuta corte invocando PowerShell (RAW al spooler Windows)
-function sendCut(printerName, { mode = 'partial', text = '', feed = 2 } = {}) {
+function sendCut(printerName, { mode = 'partial', text = '', feed = 0 } = {}) {
     return new Promise((resolve, reject) => {
-        if (os.platform() !== 'win32') return resolve(false);
+        if (os.platform() !== 'win32') return resolve(false); // no-op en macOS/Linux
 
         const args = [
             '-NoProfile',
             '-ExecutionPolicy', 'Bypass',
             '-File', CUT_PS1,
             '-PrinterName', printerName,
-            '-Mode', mode,
-            '-Feed', String(feed)
+            '-CutMode', mode
         ];
-        if (text) args.push('-Text', text); // para pruebas; en prod puedes omitir
+        if (text) args.push('-Text', text);
+        if (feed) args.push('-Feed', String(feed));
 
         const ps = spawn('powershell.exe', args, { windowsHide: true });
         let stderr = '';
+
         ps.stdout.on('data', d => logger.log(`CUT OUT: ${d.toString().trim()}`));
         ps.stderr.on('data', d => { stderr += d.toString(); });
         ps.on('close', code => {
@@ -144,34 +125,6 @@ function sendCut(printerName, { mode = 'partial', text = '', feed = 2 } = {}) {
         });
     });
 }
-
-// Ejecuta beep invocando PowerShell (RAW al spooler Windows)
-function sendBeep(printerName, { count = 4, duration = 6, text = '' } = {}) {
-    return new Promise((resolve, reject) => {
-        if (os.platform() !== 'win32') return resolve(false);
-
-        const args = [
-            '-NoProfile',
-            '-ExecutionPolicy', 'Bypass',
-            '-File', BEEP_PS1,
-            '-PrinterName', printerName,
-            '-Count', String(count),
-            '-Duration', String(duration)
-        ];
-        if (text) args.push('-Text', text); // para pruebas; en prod puedes omitir
-
-        const ps = spawn('powershell.exe', args, { windowsHide: true });
-        let stderr = '';
-        ps.stdout.on('data', d => logger.log(`BEEP OUT: ${d.toString().trim()}`));
-        ps.stderr.on('data', d => { stderr += d.toString(); });
-        ps.on('close', code => {
-            if (code === 0) return resolve(true);
-            logger.error(`Beep falló (code=${code}): ${stderr.trim()}`);
-            reject(new Error(stderr.trim() || `beep exited ${code}`));
-        });
-    });
-}
-
 // Imprimir un archivo según el sistema operativo
 function printFile(filePath, printerName) {
     try {
@@ -209,101 +162,12 @@ function printFile(filePath, printerName) {
     }
 }
 
-// Sistema de cola FIFO para trabajos de impresión
-class PrintQueue {
-    constructor() {
-        this.queue = [];
-        this.isProcessing = false;
-        this.stats = {
-            total: 0,
-            processed: 0,
-            failed: 0,
-            inQueue: 0
-        };
-    }
-
-    // Agregar trabajo a la cola
-    enqueue(job) {
-        this.queue.push({
-            id: job.jobId || `job-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-            data: job,
-            timestamp: Date.now()
-        });
-        this.stats.total++;
-        this.stats.inQueue = this.queue.length;
-        logger.log(`Trabajo agregado a la cola. Total en cola: ${this.queue.length}`);
-
-        // Si no se está procesando, iniciar el procesamiento
-        if (!this.isProcessing) {
-            this.processNext();
-        }
-    }
-
-    // Procesar el siguiente trabajo en la cola
-    async processNext() {
-        if (this.queue.length === 0) {
-            this.isProcessing = false;
-            logger.log('Cola de impresión vacía, esperando nuevos trabajos');
-            return;
-        }
-
-        this.isProcessing = true;
-        const job = this.queue.shift();
-        this.stats.inQueue = this.queue.length;
-
-        logger.log(`Procesando trabajo ${job.id} (${this.queue.length} restantes en cola)`);
-
-        try {
-            const result = await processPrintJob(job.data);
-
-            if (result.success) {
-                this.stats.processed++;
-                logger.log(`Trabajo ${job.id} completado exitosamente`);
-            } else {
-                this.stats.failed++;
-                logger.error(`Trabajo ${job.id} falló: ${result.error}`);
-            }
-
-        } catch (error) {
-            this.stats.failed++;
-            logger.error(`Error procesando trabajo ${job.id}: ${error.message}`);
-        }
-
-        // Pequeño delay entre trabajos para evitar saturar la impresora
-        setTimeout(() => {
-            this.processNext();
-        }, 500);
-    }
-
-    // Obtener estadísticas de la cola
-    getStats() {
-        return {
-            ...this.stats,
-            isProcessing: this.isProcessing,
-            queueLength: this.queue.length
-        };
-    }
-
-    // Limpiar la cola (opcional, para casos de emergencia)
-    clear() {
-        const cleared = this.queue.length;
-        this.queue = [];
-        this.stats.inQueue = 0;
-        logger.log(`Cola limpiada. ${cleared} trabajos descartados`);
-    }
-}
-
-// Instanciar la cola de impresión global
-const printQueue = new PrintQueue();
-
 // Procesar trabajo de impresión
 async function processPrintJob(data) {
     try {
         const { file, filename, destino, contentType, jobId, idUsuario } = data;
 
         logger.log(`Procesando trabajo de impresión ${jobId || ''} para impresora ${destino || 'predeterminada'}`);
-
-        logger.log(`Imprimiendo archivo ${filename || ''}`);
 
         // Guardar archivo en disco temporal
         const tempFilePath = path.join(TMP_DIR, filename);
@@ -312,26 +176,14 @@ async function processPrintJob(data) {
         const fileBuffer = Buffer.from(file, 'base64');
         fs.writeFileSync(tempFilePath, fileBuffer);
 
+        logger.log(`Archivo guardado en: ${tempFilePath}`);
+
         const printerName = (destino && destino.trim() !== '') ? destino : CONFIG.defaultPrinter;
+
+        console.log(`Usando impresora: ${printerName}`);
 
         // Imprimir
         printFile(tempFilePath, printerName);
-
-        // Lógica de beep (ANTES del corte, con menor delay)
-        try {
-            const { enabled: beepEnabled, count, duration, delayMs: beepDelay } =
-                getBeepConfigFor(printerName || CONFIG.defaultPrinter || '');
-
-            if (beepEnabled && printerName) {
-                await new Promise(r => setTimeout(r, beepDelay));
-                await sendBeep(printerName, { count, duration, text: '' });
-                logger.log(`Beep enviado: ${count} pitidos de ${duration} * 0.1s cada uno`);
-            } else {
-                logger.log(`Beep omitido: enabled=${beepEnabled}, printer=${printerName || 'N/A'}`);
-            }
-        } catch (beepErr) {
-            logger.error(`Error durante beep: ${beepErr.message}`);
-        }
 
         // Lógica de corte
         // === Corte basado SOLO en configuración (sin instrucciones del servidor) ===
@@ -340,14 +192,19 @@ async function processPrintJob(data) {
                 getCutConfigFor(printerName || CONFIG.defaultPrinter || '');
 
             if (enabled && printerName) {
+                logger.log(`Agendando corte (${mode}) en ${delayMs}ms para impresora ${printerName} (feed=${feedLines})`);
                 await new Promise(r => setTimeout(r, delayMs));
                 await sendCut(printerName, { mode, feed: feedLines, text: '' }); // text vacío en prod
+                logger.log(`Corte enviado a ${printerName}`);
             } else {
                 logger.log(`Corte omitido: enabled=${enabled}, printer=${printerName || 'N/A'}`);
             }
         } catch (cutErr) {
             logger.error(`Error durante corte: ${cutErr.message}`);
         }
+
+
+
 
         setTimeout(() => {
             try {
@@ -406,6 +263,8 @@ class WebSocketClient {
 
             this.ws.on('message', async (data) => {
                 try {
+                    console.log(`------- Nuevo mensaje recibido -------`);
+
                     let message;
                     try {
                         message = JSON.parse(data);
@@ -455,11 +314,14 @@ class WebSocketClient {
         };
 
         this.send(authMessage);
+        logger.log(`Autenticación enviada con clave: ${CONFIG.agentKey}`);
     }
 
     startPing() {
         // Limpiar cualquier interval previo
         this.stopPing();
+
+        logger.log('Iniciando sistema de ping para mantener conexión viva (cada 60 segundos)');
 
         this.pingInterval = setInterval(() => {
             if (this.isConnected && this.ws) {
@@ -469,6 +331,8 @@ class WebSocketClient {
                     this.forceCloseConnection();
                     return;
                 }
+
+                logger.log('Enviando ping al servidor para mantener conexión viva');
                 this.waitingForPong = true;
 
                 // Configurar timeout de 15 segundos para esperar el pong
@@ -518,7 +382,15 @@ class WebSocketClient {
         try {
             const { action, payload } = message;
 
-            logger.log("Accion recibida: ", action);
+            console.log(`Manejando mensaje: ${action || 'sin acción'}`);
+            console.log(
+                `Payload recibido:`,
+                `agentKey: ${payload.agentKey || 'no agentKey'}`,
+                `timeStamp: ${payload.timeStamp || 'no timeStamp'}`,
+                `destino: ${payload.destino || 'no destino'}`,
+                `filename: ${payload.filename || 'no filename'}`,
+                `jobId: ${payload.jobId || 'no jobId'}`
+            );
 
             // Si no hay acción definida, no procesamos el mensaje
             if (!action) {
@@ -539,29 +411,15 @@ class WebSocketClient {
                     }
                     logger.log(`Recibido trabajo de impresión para ${payload.destino || 'impresora predeterminada'}`);
 
-                    // Agregar trabajo a la cola en lugar de procesarlo directamente
-                    printQueue.enqueue(payload);
+                    // Procesar trabajo e imprimir
+                    const result = await processPrintJob(payload);
 
-                    break;
-
-                case 'getQueueStats':
-                    // Enviar estadísticas de la cola al servidor
-                    const stats = printQueue.getStats();
-                    logger.log(`Estadísticas solicitadas: ${JSON.stringify(stats)}`);
+                    // Enviar resultado de vuelta al servidor
                     this.send({
-                        action: 'queueStats',
-                        payload: stats
+                        action: 'silentPrintResult',
+                        payload: result
                     });
-                    break;
 
-                case 'clearQueue':
-                    // Limpiar la cola (solo si es autorizado)
-                    logger.log('Solicitud de limpieza de cola recibida');
-                    printQueue.clear();
-                    this.send({
-                        action: 'queueCleared',
-                        payload: { success: true, message: 'Cola limpiada correctamente' }
-                    });
                     break;
 
                 case 'pong':
@@ -616,7 +474,6 @@ function main() {
     logger.log(`Servidor WebSocket: ${CONFIG.serverUrl}`);
     logger.log(`Clave de agente: ${CONFIG.agentKey}`);
     logger.log(`Impresora predeterminada: ${CONFIG.defaultPrinter || 'No configurada'}`);
-    logger.log('Sistema de cola de impresión FIFO activado');
 
     // (Información de corte eliminada)
 
@@ -625,25 +482,15 @@ function main() {
     const client = new WebSocketClient();
     client.connect();
 
-    // Reportar estadísticas de cola cada 30 segundos en consola
-    setInterval(() => {
-        const stats = printQueue.getStats();
-        if (stats.total > 0 || stats.inQueue > 0) {
-            logger.log(`Cola: ${stats.inQueue} pendientes | ${stats.processed} completados | ${stats.failed} fallidos | ${stats.total} totales`);
-        }
-    }, 30000);
-
     // Manejar señales de cierre
     process.on('SIGINT', () => {
         logger.log('Proceso interrumpido, cerrando...');
-        logger.log(`Estadísticas finales: ${JSON.stringify(printQueue.getStats())}`);
         client.stopPing();
         process.exit(0);
     });
 
     process.on('SIGTERM', () => {
         logger.log('Proceso terminado, cerrando...');
-        logger.log(`Estadísticas finales: ${JSON.stringify(printQueue.getStats())}`);
         client.stopPing();
         process.exit(0);
     });

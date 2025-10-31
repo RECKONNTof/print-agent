@@ -9,6 +9,7 @@ module.exports = {    // URL del servidor WebSocket
     serverUrl: "wss://ws.reckonnt.net:9090/ws",
 
     // Clave de autenticacion del agente
+    // agentKey: "izC3Wc4rb2u84mfiDtpLxN3NOJSMivTVOSikdpVTLGPQm1FuJtfpVeKvil4hVd3w",
     agentKey: "LE4piAQl4MICHIedQUGvekkCyJAUPu3eT3jHELgvhil1n5HifuBfTZqjq3aFeMz4",
 
     // Configuracion de logs
@@ -30,21 +31,54 @@ module.exports = {    // URL del servidor WebSocket
 
     // Configuracion de corte de papel
     cut: {
-        enabled: true,            // activar/desactivar corte global
+        enabled: false,            // activar/desactivar corte global
         defaultMode: "partial",   // "partial" = ESC m, "full" = ESC i
-        delayMs: 1200,            // espera tras imprimir antes de cortar (ms)
+        delayMs: 3000,
+        feedLines: 3,
         perPrinter: {
-            // Ejemplo: cortar solo en la impresora térmica "CAJA"
             "CAJA": {
                 enabled: true,
                 mode: "partial",  // o "full"
                 delayMs: 1000
             },
+            "BARRA": {
+                enabled: true,
+                mode: "partial",  // o "full"
+                delayMs: 1000
+            },
+            "COCINA": {
+                enabled: true,
+                mode: "partial",  // o "full"
+                delayMs: 1000
+            },
+        }
+    },
 
-            // Ejemplo: desactivar corte para la Epson
-            "EPSON L395 Series": {
-                enabled: false
-            }
+    // Configuracion de beep (sonido) de impresora
+    beep: {
+        enabled: false,              // activar/desactivar beep global
+        count: 4,                   // número de pitidos (beeps)
+        duration: 6,                // duración de cada beep (~0.6 segundos)
+        delayMs: 500,               // delay antes de enviar el beep (ms)
+        perPrinter: {
+            "CAJA": {
+                enabled: true,
+                count: 4,
+                duration: 6,
+                delayMs: 500
+            },
+            "BARRA": {
+                enabled: true,
+                count: 3,
+                duration: 5,
+                delayMs: 500
+            },
+            "COCINA": {
+                enabled: true,
+                count: 2,
+                duration: 4,
+                delayMs: 500
+            },
         }
     }
 };
