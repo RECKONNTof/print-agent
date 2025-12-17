@@ -439,6 +439,23 @@ class WebSocketClient {
                 logger.error(`Error de WebSocket: ${error.message}`);
             });
 
+            // Manejar evento ping nativo del WebSocket
+            this.ws.on('ping', (data) => {
+                logger.log('Ping recibido del servidor');
+                // El pong se envía automáticamente por ws, pero lo registramos
+            });
+
+            // Manejar evento pong nativo del WebSocket
+            this.ws.on('pong', (data) => {
+                logger.log('Pong recibido del servidor - conexión confirmada como activa');
+                // Limpiar el timeout del ping y resetear el flag
+                if (this.pingTimeout) {
+                    clearTimeout(this.pingTimeout);
+                    this.pingTimeout = null;
+                }
+                this.waitingForPong = false;
+            });
+
         } catch (error) {
             logger.error(`Error al conectar: ${error.message}`);
             this.attemptReconnect();
@@ -479,13 +496,9 @@ class WebSocketClient {
                     }
                 }, 15000); // 15 segundos
 
-                this.send({
-                    action: 'ping',
-                    payload: {
-                        timestamp: Date.now(),
-                        connectionName: "silentPrint"
-                    }
-                });
+                // Enviar ping nativo del WebSocket
+                logger.log('Enviando ping al servidor');
+                this.ws.ping();
             }
         }, 60000); // 60 segundos = 1 minuto
     }
@@ -562,16 +575,6 @@ class WebSocketClient {
                         action: 'queueCleared',
                         payload: { success: true, message: 'Cola limpiada correctamente' }
                     });
-                    break;
-
-                case 'pong':
-                    logger.log('Pong recibido del servidor - conexión confirmada como activa');
-                    // Limpiar el timeout del ping y resetear el flag
-                    if (this.pingTimeout) {
-                        clearTimeout(this.pingTimeout);
-                        this.pingTimeout = null;
-                    }
-                    this.waitingForPong = false;
                     break;
 
                 default:

@@ -6,11 +6,13 @@
  */
 
 module.exports = {    // URL del servidor WebSocket
-    serverUrl: "wss://ws.reckonnt.net:9090/ws",
+    // serverUrl: "wss://ws.reckonnt.net:9090/ws",
+    serverUrl: "ws://localhost:9090/ws",
 
     // Clave de autenticacion del agente
     // agentKey: "izC3Wc4rb2u84mfiDtpLxN3NOJSMivTVOSikdpVTLGPQm1FuJtfpVeKvil4hVd3w",
     agentKey: "LE4piAQl4MICHIedQUGvekkCyJAUPu3eT3jHELgvhil1n5HifuBfTZqjq3aFeMz4",
+    // agentKey: "DAQLqPmYvpZn3GzRWIV3gLdXJEej8WJTwlX2EOhLxBO9mU3gQTQBvk9e1gvTRoYC",
 
     // Configuracion de logs
     logFile: "./recky-print-agent.log",
