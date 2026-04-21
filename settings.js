@@ -26,10 +26,34 @@ module.exports = {    // URL del servidor WebSocket
     tempDir: null,              // Directorio temporal para archivos (null = usar el predeterminado del sistema)
     tempFileCleanupDelay: 3000,  // Tiempo antes de eliminar archivos temporales (ms)
 
-    // Configuracion de impresion
-    sumatraPath: "C:\\Users\\Usuario\\AppData\\Local\\SumatraPDF\\SumatraPDF.exe", // Ruta al ejecutable de SumatraPDF
+    // Configuracion de impresoras (Reemplaza a SumatraPDF)
+    // Puede ser USB o Network. Las USB pueden especificar vid y pid (opcional). Las de red requieren "ip" y "port".
+    printers: {
+        "CAJA": {
+            type: "windows",
+            name: "EPSON TM-U220 Receipt", // El nombre exacto que aparece en "Windows Devices and Printers"
+            beep: { enabled: true, count: 4, duration: 6 },
+            cut: { enabled: true, mode: "partial" }
+        },
+        "BARRA": {
+            type: "network",
+            ip: "192.168.1.50",
+            port: 9100,
+            beep: { enabled: true, count: 3, duration: 5 },
+            cut: { enabled: true, mode: "partial" }
+        },
+        "COCINA": {
+            type: "network",
+            ip: "192.168.1.51",
+            port: 9100,
+            beep: { enabled: true, count: 2, duration: 4 },
+            cut: { enabled: true, mode: "partial" }
+        },
+    },
 
-    defaultPrinter: "EPSON L395 Series",        // Impresora predeterminada
+    defaultPrinter: "CAJA",        // Impresora predeterminada
+
+    // (La configuración legacy de beep/cut perPrinter puede removerse o ignorarse en esta nueva versión, ya que ahora cada impresora en 'printers' tiene sus opciones directamente).
 
     // Configuracion de corte de papel
     cut: {

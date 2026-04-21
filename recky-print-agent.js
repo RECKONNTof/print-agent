@@ -18,6 +18,9 @@ const { execSync, spawn } = require('child_process');
 
 // (Funcionalidad de corte eliminada)
 
+// (Adaptadores de impresión con escpos)
+const getPrinterManager = require('./src/printers/printerManager.js');
+
 // Cargar configuración desde settings.js
 let userConfig = {};
 try {
@@ -35,40 +38,12 @@ const CONFIG = {
     reconnectTimeout: userConfig.reconnectTimeout || 5000,
     reconnectMaxAttempts: userConfig.reconnectMaxAttempts || 100,
     tempFileCleanupDelay: userConfig.tempFileCleanupDelay || 3000,
-    sumatraPath: userConfig.sumatraPath || '',
-    defaultPrinter: userConfig.defaultPrinter || null,
-    cut: {
-        enabled: userConfig?.cut?.enabled ?? false,
-        defaultMode: userConfig?.cut?.defaultMode || 'partial',
-        delayMs: userConfig?.cut?.delayMs ?? 3000,
-        feedLines: userConfig?.cut?.feedLines ?? 3,
-        perPrinter: userConfig?.cut?.perPrinter || {}
-    },
-    beep: {
-        enabled: userConfig?.beep?.enabled ?? false,
-        count: userConfig?.beep?.count ?? 4,
-        duration: userConfig?.beep?.duration ?? 6,
-        delayMs: userConfig?.beep?.delayMs ?? 500,
-        perPrinter: userConfig?.beep?.perPrinter || {}
-    }
+    printers: userConfig.printers || {},
+    defaultPrinter: userConfig.defaultPrinter || null
 };
 
-// Directorio temporal para archivos
-const TMP_DIR = userConfig.tempDir || path.join(os.tmpdir(), 'recky-print');
-
-// Ruta de los scripts PowerShell
-const CUT_PS1 = path.join(__dirname, 'send-cut.ps1');
-const BEEP_PS1 = path.join(__dirname, 'send-beep.ps1');
-
-// Asegurar que existe el directorio temporal
-if (!fs.existsSync(TMP_DIR)) {
-    try {
-        fs.mkdirSync(TMP_DIR, { recursive: true });
-    } catch (error) {
-        console.error(`Error al crear directorio temporal: ${error.message}`);
-        process.exit(1);
-    }
-}
+// Manager de impresoras node-escpos
+const printerManager = getPrinterManager(CONFIG);
 
 // Sistema de logs básico
 const logger = {
@@ -296,71 +271,25 @@ class PrintQueue {
 // Instanciar la cola de impresión global
 const printQueue = new PrintQueue();
 
-// Procesar trabajo de impresión
+// Procesar trabajo de impresión (Nueva arquitectura node-escpos)
 async function processPrintJob(data) {
     try {
-        const { file, filename, destino, contentType, jobId, idUsuario } = data;
-
-        logger.log(`Procesando trabajo de impresión ${jobId || ''} para impresora ${destino || 'predeterminada'}`);
-
-        logger.log(`Imprimiendo archivo ${filename || ''}`);
-
-        // Guardar archivo en disco temporal
-        const tempFilePath = path.join(TMP_DIR, filename);
-
-        // Decodificar contenido base64 y guardar
-        const fileBuffer = Buffer.from(file, 'base64');
-        fs.writeFileSync(tempFilePath, fileBuffer);
-
+        const { destino, payload, type, jobId, idUsuario } = data;
         const printerName = (destino && destino.trim() !== '') ? destino : CONFIG.defaultPrinter;
 
-        // Imprimir
-        printFile(tempFilePath, printerName);
+        logger.log(`Procesando trabajo de impresión ESC/POS ${jobId || ''} para impresora: ${printerName || 'predeterminada'}`);
 
-        // Lógica de beep (ANTES del corte, con menor delay)
-        try {
-            const { enabled: beepEnabled, count, duration, delayMs: beepDelay } =
-                getBeepConfigFor(printerName || CONFIG.defaultPrinter || '');
-
-            if (beepEnabled && printerName) {
-                await new Promise(r => setTimeout(r, beepDelay));
-                await sendBeep(printerName, { count, duration, text: '' });
-                logger.log(`Beep enviado: ${count} pitidos de ${duration} * 0.1s cada uno`);
-            } else {
-                logger.log(`Beep omitido: enabled=${beepEnabled}, printer=${printerName || 'N/A'}`);
-            }
-        } catch (beepErr) {
-            logger.error(`Error durante beep: ${beepErr.message}`);
+        // Verificamos si existe en config
+        if (!CONFIG.printers[printerName]) {
+            throw new Error(`Impresora no encontrada en la configuración: ${printerName}`);
         }
 
-        // Lógica de corte
-        // === Corte basado SOLO en configuración (sin instrucciones del servidor) ===
-        try {
-            const { enabled, mode, delayMs, feedLines } =
-                getCutConfigFor(printerName || CONFIG.defaultPrinter || '');
-
-            if (enabled && printerName) {
-                await new Promise(r => setTimeout(r, delayMs));
-                await sendCut(printerName, { mode, feed: feedLines, text: '' }); // text vacío en prod
-            } else {
-                logger.log(`Corte omitido: enabled=${enabled}, printer=${printerName || 'N/A'}`);
-            }
-        } catch (cutErr) {
-            logger.error(`Error durante corte: ${cutErr.message}`);
-        }
-
-        setTimeout(() => {
-            try {
-                fs.unlinkSync(tempFilePath);
-                logger.log(`Archivo temporal eliminado: ${tempFilePath}`);
-            } catch (err) {
-                logger.error(`Error al eliminar archivo temporal: ${err.message}`);
-            }
-        }, CONFIG.tempFileCleanupDelay);
+        // Ejecutamos la tarea de impresión usando el manager de ES/CPOS
+        await printerManager.printTask(printerName, data, CONFIG.printers);
 
         return {
             success: true,
-            message: `Documento impreso correctamente en ${destino || 'impresora predeterminada'}`,
+            message: `Documento impreso correctamente en ${printerName || 'impresora predeterminada'}`,
             idUsuario
         };
 
@@ -370,7 +299,7 @@ async function processPrintJob(data) {
             success: false,
             error: error.message,
             message: `Error al imprimir: ${error.message}`,
-            idUsuario: data.idUsuario
+            idUsuario: data?.idUsuario
         };
     }
 }
@@ -615,11 +544,10 @@ class WebSocketClient {
 function main() {
     logger.log('=== Recky Print Agent iniciado ===');
     logger.log(`Sistema: ${os.platform()} ${os.release()}`);
-    logger.log(`Directorio temporal: ${TMP_DIR}`);
     logger.log(`Servidor WebSocket: ${CONFIG.serverUrl}`);
     logger.log(`Clave de agente: ${CONFIG.agentKey}`);
     logger.log(`Impresora predeterminada: ${CONFIG.defaultPrinter || 'No configurada'}`);
-    logger.log('Sistema de cola de impresión FIFO activado');
+    logger.log('Sistema de cola de impresión FIFO activado para nodo escpos');
 
     // (Información de corte eliminada)
 
