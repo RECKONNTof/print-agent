@@ -272,12 +272,12 @@ class PrintQueue {
 const printQueue = new PrintQueue();
 
 // Procesar trabajo de impresión (Nueva arquitectura node-escpos)
-async function processPrintJob(data) {
+async function processPrintJob(jobData) {
     try {
-        const { destino, payload, type, jobId, idUsuario } = data;
+        const { destino, data, printType, jobId, idUsuario } = jobData;
         const printerName = (destino && destino.trim() !== '') ? destino : CONFIG.defaultPrinter;
 
-        logger.log(`Procesando trabajo de impresión ESC/POS ${jobId || ''} para impresora: ${printerName || 'predeterminada'}`);
+        logger.log(`Procesando trabajo de impresión ESC/POS ${jobId || ''} [${printType || 'desconocido'}] para impresora: ${printerName || 'predeterminada'}`);
 
         // Verificamos si existe en config
         if (!CONFIG.printers[printerName]) {
@@ -285,7 +285,7 @@ async function processPrintJob(data) {
         }
 
         // Ejecutamos la tarea de impresión usando el manager de ES/CPOS
-        await printerManager.printTask(printerName, data, CONFIG.printers);
+        await printerManager.printTask(printerName, jobData, CONFIG.printers);
 
         return {
             success: true,

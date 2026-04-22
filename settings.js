@@ -29,10 +29,17 @@ module.exports = {    // URL del servidor WebSocket
     // Configuracion de impresoras (Reemplaza a SumatraPDF)
     // Puede ser USB o Network. Las USB pueden especificar vid y pid (opcional). Las de red requieren "ip" y "port".
     printers: {
-        "CAJA": {
-            type: "windows",
-            name: "EPSON TM-U220 Receipt", // El nombre exacto que aparece en "Windows Devices and Printers"
-            beep: { enabled: true, count: 4, duration: 6 },
+        // "EPSON L395 Series": {
+        //     type: "windows",
+        //     name: "EPSON L395 Series", // El nombre exacto que aparece en "Windows Devices and Printers"
+        //     beep: { enabled: true, count: 4, duration: 6 },
+        //     cut: { enabled: true, mode: "partial" }
+        // },
+        "EPSON L395 Series": {
+            type: "network",
+            ip: "192.168.100.77",
+            port: 9100,
+            beep: { enabled: true, count: 3, duration: 5 },
             cut: { enabled: true, mode: "partial" }
         },
         "BARRA": {
@@ -51,7 +58,7 @@ module.exports = {    // URL del servidor WebSocket
         },
     },
 
-    defaultPrinter: "CAJA",        // Impresora predeterminada
+    defaultPrinter: "EPSON L395 Series",        // Impresora predeterminada
 
     // (La configuración legacy de beep/cut perPrinter puede removerse o ignorarse en esta nueva versión, ya que ahora cada impresora en 'printers' tiene sus opciones directamente).
 
@@ -62,7 +69,7 @@ module.exports = {    // URL del servidor WebSocket
         delayMs: 3000,
         feedLines: 3,
         perPrinter: {
-            "CAJA": {
+            "EPSON L395 Series": {
                 enabled: true,
                 mode: "partial",  // o "full"
                 delayMs: 1000
@@ -87,7 +94,7 @@ module.exports = {    // URL del servidor WebSocket
         duration: 6,                // duración de cada beep (~0.6 segundos)
         delayMs: 500,               // delay antes de enviar el beep (ms)
         perPrinter: {
-            "CAJA": {
+            "EPSON L395 Series": {
                 enabled: true,
                 count: 4,
                 duration: 6,

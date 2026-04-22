@@ -13,8 +13,9 @@ function printComanda(printer, data) {
         .size(1, 1)               // Tamaño doble
         .text(`COMANDA - ${data.area || ''}`)
         .size(0, 0)               // Tamaño normal
-        .text(`${data.ambiente || ''} - ${data.mesa || ''}`)
+        .text(`${data.ambiente || ''} - Mesa ${data.mesa || ''}`)
         .style('NORMAL')          // Normal
+        .text(data.mesero ? `Mesero: ${data.mesero}` : '')
         .text(data.fecha || '')
         .drawLine()               // Línea separadora por defecto (-- ó ==)
         .align('LT');             // Izquierda

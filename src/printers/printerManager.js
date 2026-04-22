@@ -60,21 +60,24 @@ const getPrinterManager = (config) => {
                     }
 
                     try {
+                        const type = printData.printType || printData.type;
+                        const dataContent = printData.data || printData.payload || printData;
+
                         // Imprime según el tipo de documento. Ej: 'comanda', 'precuenta', 'cierre_caja', 'factura'
-                        if (printData.type === 'comanda') {
-                            printComanda(printer, printData.payload || printData);
-                        } else if (printData.type === 'precuenta') {
-                            printPrecuenta(printer, printData.payload || printData);
-                        } else if (printData.type === 'cierre_caja') {
-                            printCierreCaja(printer, printData.payload || printData);
-                        } else if (printData.type === 'factura') {
-                            printFactura(printer, printData.payload || printData);
+                        if (type === 'comanda') {
+                            printComanda(printer, dataContent);
+                        } else if (type === 'precuenta') {
+                            printPrecuenta(printer, dataContent);
+                        } else if (type === 'cierre_caja') {
+                            printCierreCaja(printer, dataContent);
+                        } else if (type === 'factura') {
+                            printFactura(printer, dataContent);
                         } else {
                             // Por defecto
-                            printComanda(printer, printData.payload || printData);
+                            printComanda(printer, dataContent);
                         }
 
-                        // Lógica de Beep y Corte nativa de ESC/POS
+                        // Lógicas de Beep y Corte nativa de ESC/POS
                         const beepConfig = pConfig.beep || { enabled: false, count: 1, duration: 2 };
                         if (beepConfig.enabled) {
                             printer.beep(beepConfig.count, beepConfig.duration);

@@ -54,23 +54,23 @@ function printCierreCaja(printer, data) {
     if (detCierre.detalleEfectivo) {
         printer.drawLine().style('B').text('REGISTRO DE EFECTIVO').style('NORMAL');
         const ef = detCierre.detalleEfectivo;
-        printRow('Monedas:', `$${formatCurrency(ef.monedas)}`);
-        printRow('Billetes $5:', `$${formatCurrency(ef.billetes5)}`);
-        printRow('Billetes $10:', `$${formatCurrency(ef.billetes10)}`);
-        printRow('Billetes $20:', `$${formatCurrency(ef.billetes20)}`);
-        printRow('Billetes $50:', `$${formatCurrency(ef.billetes50)}`);
-        printRow('Billetes $100:', `$${formatCurrency(ef.billetes100)}`);
+        printRow('Monedas:', formatCurrency(ef.monedas));
+        printRow('Billetes $5:', formatCurrency(ef.billetes5));
+        printRow('Billetes $10:', formatCurrency(ef.billetes10));
+        printRow('Billetes $20:', formatCurrency(ef.billetes20));
+        printRow('Billetes $50:', formatCurrency(ef.billetes50));
+        printRow('Billetes $100:', formatCurrency(ef.billetes100));
     }
 
     // FORMAs DE PAGO
     if (detCierre.detalleFP) {
         printer.drawLine().style('B').text('FORMAS DE PAGO').style('NORMAL');
         const fp = detCierre.detalleFP;
-        printRow('Credito:', `$${formatCurrency(fp.credito)}`);
-        printRow('Efectivo:', `$${formatCurrency(fp.efectivo)}`);
-        printRow('Tarjeta:', `$${formatCurrency(fp.tarjeta)}`);
-        printRow('Transferencia:', `$${formatCurrency(fp.transferencia)}`);
-        printRow('Otros:', `$${formatCurrency(fp.otro)}`);
+        printRow('Credito:', formatCurrency(fp.credito));
+        printRow('Efectivo:', formatCurrency(fp.efectivo));
+        printRow('Tarjeta:', formatCurrency(fp.tarjeta));
+        printRow('Transferencia:', formatCurrency(fp.transferencia));
+        printRow('Otros:', formatCurrency(fp.otro));
     }
 
     // PROPINAS
@@ -78,33 +78,33 @@ function printCierreCaja(printer, data) {
         // Asumiendo que el HTML validó con detalleFP pero usa detallePropinas
         printer.drawLine().style('B').text('PROPINAS').style('NORMAL');
         const prop = detCierre.detallePropinas;
-        printRow('Credito:', `$${formatCurrency(prop.propinaCredito)}`);
-        printRow('Efectivo:', `$${formatCurrency(prop.propinaEfectivo)}`);
-        printRow('Tarjeta:', `$${formatCurrency(prop.propinaTarjeta)}`);
-        printRow('Transferencia:', `$${formatCurrency(prop.propinaTransferencia)}`);
-        printRow('Otros:', `$${formatCurrency(prop.propinaOtro)}`);
+        printRow('Credito:', formatCurrency(prop.propinaCredito));
+        printRow('Efectivo:', formatCurrency(prop.propinaEfectivo));
+        printRow('Tarjeta:', formatCurrency(prop.propinaTarjeta));
+        printRow('Transferencia:', formatCurrency(prop.propinaTransferencia));
+        printRow('Otros:', formatCurrency(prop.propinaOtro));
     }
 
     // RESUMEN DE EFECTIVO
     printer.drawLine().style('B').text('RESUMEN DE EFECTIVO').style('NORMAL');
-    printRow('Monto Apertura:', `$${formatCurrency(detCierre.montoApertura)}`);
-    printRow('Ventas en Efectivo:', `$${formatCurrency(detCierre.detalleFP?.efectivo)}`);
-    printRow('Ingresos Caja:', `$${formatCurrency(detCierre.totalIngresos)}`);
-    printRow('Egresos Caja:', `$${formatCurrency(detCierre.totalEgresos)}`);
-    printRow('Efectivo Registrado:', `$${formatCurrency(detCierre.totalEfectivo)}`);
-    printRow('Diferencia:', `(${diferencia_efectivo_estado || ''}) $${formatCurrency(diferencia_efectivo)}`);
+    printRow('Monto Apertura:', formatCurrency(detCierre.montoApertura));
+    printRow('Ventas en Efectivo:', formatCurrency(detCierre.detalleFP?.efectivo));
+    printRow('Ingresos Caja:', formatCurrency(detCierre.totalIngresos));
+    printRow('Egresos Caja:', formatCurrency(detCierre.totalEgresos));
+    printRow('Efectivo Registrado:', formatCurrency(detCierre.totalEfectivo));
+    printRow('Diferencia:', `(${diferencia_efectivo_estado || ''}) ${formatCurrency(diferencia_efectivo)}`);
 
     // RESUMEN DE TRANSFERENCIAS
     printer.drawLine().style('B').text('RESUMEN DE TRANSFERENCIAS').style('NORMAL');
-    printRow('Ventas Transferencia:', `$${formatCurrency(detCierre.detalleFP?.transferencia)}`);
-    printRow('Transf Registradas:', `$${formatCurrency(detCierre.totalTransferencias)}`);
-    printRow('Diferencia:', `(${diferencia_transferencia_estado || ''}) $${formatCurrency(diferencia_transferencia)}`);
+    printRow('Ventas Transferencia:', formatCurrency(detCierre.detalleFP?.transferencia));
+    printRow('Transf Registradas:', formatCurrency(detCierre.totalTransferencias));
+    printRow('Diferencia:', `(${diferencia_transferencia_estado || ''}) ${formatCurrency(diferencia_transferencia)}`);
 
     // RESUMEN DE TARJETAS
     printer.drawLine().style('B').text('RESUMEN DE TARJETAS').style('NORMAL');
-    printRow('Ventas con Tarjeta:', `$${formatCurrency(detCierre.detalleFP?.tarjeta)}`);
-    printRow('Valor en Tarjetas:', `$${formatCurrency(detCierre.totalTarjetas)}`);
-    printRow('Diferencia:', `(${diferencia_tarjeta_estado || ''}) $${formatCurrency(diferencia_tarjeta)}`);
+    printRow('Ventas con Tarjeta:', formatCurrency(detCierre.detalleFP?.tarjeta));
+    printRow('Valor en Tarjetas:', formatCurrency(detCierre.totalTarjetas));
+    printRow('Diferencia:', `(${diferencia_tarjeta_estado || ''}) ${formatCurrency(diferencia_tarjeta)}`);
 
     // INGRESOS
     if (detCierre.detalleIngresos && detCierre.detalleIngresos.length > 0) {
@@ -118,7 +118,7 @@ function printCierreCaja(printer, data) {
             printer.tableCustom([
                 { text: ing.fechaRegistro || '', align: 'LEFT', width: 0.30 },
                 { text: ing.motivo || '', align: 'LEFT', width: 0.45 },
-                { text: `$${formatCurrency(ing.monto)}`, align: 'RIGHT', width: 0.25 }
+                { text: formatCurrency(ing.monto), align: 'RIGHT', width: 0.25 }
             ], 'cp858');
         });
     }
@@ -135,20 +135,20 @@ function printCierreCaja(printer, data) {
             printer.tableCustom([
                 { text: egr.fechaRegistro || '', align: 'LEFT', width: 0.30 },
                 { text: egr.motivo || '', align: 'LEFT', width: 0.45 },
-                { text: `$${formatCurrency(egr.monto)}`, align: 'RIGHT', width: 0.25 }
+                { text: formatCurrency(egr.monto), align: 'RIGHT', width: 0.25 }
             ], 'cp858');
         });
     }
 
     // RESUMEN DEL CIERRE
     printer.drawLine().style('B').text('RESUMEN DEL CIERRE').style('NORMAL');
-    printRow('Subtotal Ventas:', `$${formatCurrency(cierre.subtotal)}`);
-    printRow('Total Ventas:', `$${formatCurrency(detCierre.totalVentas)}`);
-    printRow('Monto Apertura:', `$${formatCurrency(detCierre.montoApertura)}`);
-    printRow('Total Ingresos:', `$${formatCurrency(detCierre.totalIngresos)}`);
-    printRow('Total Egresos:', `$${formatCurrency(detCierre.totalEgresos)}`);
-    printRow('Total Registrado:', `$${formatCurrency(total_registrado)}`);
-    printRow('Diferencia:', `$${formatCurrency(diferencia)}`, true); // Bold
+    printRow('Subtotal Ventas:', formatCurrency(cierre.subtotal));
+    printRow('Total Ventas:', formatCurrency(detCierre.totalVentas));
+    printRow('Monto Apertura:', formatCurrency(detCierre.montoApertura));
+    printRow('Total Ingresos:', formatCurrency(detCierre.totalIngresos));
+    printRow('Total Egresos:', formatCurrency(detCierre.totalEgresos));
+    printRow('Total Registrado:', formatCurrency(total_registrado));
+    printRow('Diferencia:', formatCurrency(diferencia), true); // Bold
 
     // RESULTADO
     printer
@@ -157,7 +157,8 @@ function printCierreCaja(printer, data) {
         .style('B')
         .text('Resultado del Cierre')
         .text(resultado_texto || '')
-        .text(`Ticket Promedio: $${formatCurrency(ticket_promedio)}`)
+        .text(`Personas Atendidas: ${cierre.cantidadPersonas || 0}`)
+        .text(`Ticket Promedio: ${formatCurrency(ticket_promedio)}`)
         .style('NORMAL')
         .drawLine();
 
